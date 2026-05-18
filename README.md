@@ -1,22 +1,60 @@
 # Backend Legacy API
 
-API legacy con problemas intencionales para prueba técnica. El framework fue actualizado a **Laravel 11**; la lógica de negocio legacy se mantiene.
+API de productos: **Laravel 11**, Sanctum, auditoría, tests y OpenAPI.
 
-## Stack
+## Docker — paso 1 (MySQL + Redis + API)
 
-- Laravel 11
-- PHP 8.2+ (Docker: `php:8.3-cli`)
-- MySQL
-- Docker (opcional)
+> **Evaluador:** levantar **este** repositorio antes que el frontend. Incluye **MySQL** (datos), **Redis** (caché y colas), la **API** y el worker **`queue`**. Redis no sustituye MySQL.
 
-Documentación:
+Desde **esta carpeta**:
 
-- **[UPGRADE.md](./UPGRADE.md)** — migración Laravel 8 → 11 (problemas y soluciones)
-- **[DOCKER.md](./DOCKER.md)** — Docker y red compartida con el frontend
+```bash
+docker compose up -d --build
+docker compose logs -f api
+```
 
-## Instalación (local)
+Esperar en logs: `API ready.` y `Laravel development server started`.
 
-Requiere PHP 8.2+ y Composer.
+```bash
+docker compose ps
+curl -s http://localhost:8000/api/health
+```
+
+Servicios esperados: `mysql`, `redis`, `api`, `queue` (worker).
+
+| Recurso | URL / datos |
+|---------|-------------|
+| API | http://localhost:8000/api |
+| Health | http://localhost:8000/api/health |
+| **OpenAPI / Swagger UI** | http://localhost:8000/docs/api |
+| OpenAPI JSON | http://localhost:8000/docs/api.json |
+| **MySQL (host)** | `127.0.0.1:3307` — `root` / `root` — BD `legacy_products` |
+
+**Automático en el contenedor:** `.env.docker`, migraciones, seed si no hay usuarios, dependencias Composer en la imagen.
+
+**Siguiente paso:** [frontend README](../frontend-legacy-vue2/README.md) — `docker compose up` en `frontend-legacy-vue2`.
+
+Detalle técnico: [DOCKER.md](./DOCKER.md) · OpenAPI: [OPENAPI.md](./OPENAPI.md)
+
+### Credenciales aplicación
+
+```txt
+email: admin@legacy.test
+password: password
+```
+
+### Parar backend + MySQL
+
+```bash
+docker compose down
+docker compose down -v   # además borra datos MySQL
+```
+
+---
+
+## Instalación local (sin Docker)
+
+PHP 8.2+ y Composer. MySQL en el host con `.env` propio.
 
 ```bash
 cp .env.example .env
@@ -26,60 +64,17 @@ php artisan migrate --seed
 php artisan serve
 ```
 
-## Docker
+---
 
-```bash
-docker compose up -d --build
-docker compose logs -f api
-```
+## Documentación
 
-Ver [DOCKER.md](./DOCKER.md). Levantar el backend **antes** que el frontend (`legacy_shared`).
+- [DOCKER.md](./DOCKER.md) — arquitectura Docker, problemas resueltos
+- [API.md](./API.md) — plan de migración, decisiones técnicas, optimización
+- [UPGRADE.md](./UPGRADE.md) — Laravel 8 → 11
+- [OPENAPI.md](./OPENAPI.md) — Swagger
 
-## URL base
-
-```txt
-http://127.0.0.1:8000/api
-```
-
-Health:
-
-```txt
-GET /up          # Laravel 11
-GET /api/health  # Legacy (incluye DB)
-```
-
-## Credenciales de prueba
-
-```txt
-email: admin@legacy.test
-password: password
-```
-
-## Endpoints legacy
-
-```txt
-POST /api/login
-GET  /api/products
-POST /api/products
-GET  /api/products/{id}
-PUT  /api/products/{id}
-DELETE /api/products/{id}
-GET  /api/categories
-POST /api/categories
-PUT  /api/categories/{id}
-DELETE /api/categories/{id}
-GET  /api/products/{id}/stock-movements
-POST /api/products/{id}/stock-movements
-GET  /api/dashboard
-GET  /api/health
-```
-
-## Tests
+## Tests (host, sin Docker obligatorio)
 
 ```bash
 php vendor/bin/phpunit
 ```
-
-## Nota
-
-Siguen existiendo errores intencionales de arquitectura, rendimiento, seguridad y mantenibilidad en el código de dominio. No tomar como ejemplo de buenas prácticas.

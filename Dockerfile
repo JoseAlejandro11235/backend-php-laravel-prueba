@@ -1,4 +1,3 @@
-# Composer stage: use php:8.3-cli + composer binary (tag composer:2-php8.2 does not exist on Docker Hub).
 FROM php:8.3-cli AS composer
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -21,11 +20,12 @@ FROM php:8.3-cli
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     unzip \
+    curl \
     libzip-dev \
     && docker-php-ext-install pdo_mysql zip \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=composer /usr/bin/composer /usr/bin/composer
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www/html
 

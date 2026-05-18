@@ -2,48 +2,40 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\Auth\LoginRequest;
+use App\Http\Resources\Auth\LoginResource;
+use App\Http\Resources\MessageResource;
+use App\Http\Resources\UserResource;
+use App\Services\AuthService;
+use Dedoc\Scramble\Attributes\Group;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Str;
 
+#[Group('Authentication')]
 class AuthController extends Controller
 {
-    public function login(Request $request)
+    public function __construct(
+        protected AuthService $authService
+    ) {}
+
+    public function login(LoginRequest $request): LoginResource
     {
-        // Legacy: validation inside controller and inconsistent response format.
-        if (!$request->email || !$request->password) {
-            return response()->json(['error' => 'Email and password are required'], 400);
-        }
+        $result = $this->authService->login(
+            $request->validated('email'),
+            $request->validated('password')
+        );
 
-        $user = DB::table('users')->where('email', $request->email)->first();
-
-        if (!$user || !Hash::check($request->password, $user->password)) {
-            return response()->json(['success' => false, 'message' => 'Invalid credentials'], 401);
-        }
-
-        $token = Str::random(60);
-        DB::table('users')->where('id', $user->id)->update(['api_token' => $token]);
-
-        return response()->json([
-            'token' => $token,
-            'user' => [
-                'id' => $user->id,
-                'name' => $user->name,
-                'email' => $user->email,
-            ],
-        ]);
+        return new LoginResource($result);
     }
 
-    public function me(Request $request)
+    public function me(Request $request): UserResource
     {
-        $user = DB::table('users')->where('id', $request->auth_user_id)->first();
-        return response()->json($user);
+        return new UserResource($request->user());
     }
 
-    public function logout(Request $request)
+    public function logout(Request $request): MessageResource
     {
-        DB::table('users')->where('id', $request->auth_user_id)->update(['api_token' => null]);
-        return response()->json(['ok' => true]);
+        $this->authService->logout($request->user());
+
+        return new MessageResource(['ok' => true]);
     }
 }

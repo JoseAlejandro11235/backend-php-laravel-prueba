@@ -2,62 +2,58 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\Category\IndexCategoryRequest;
+use App\Http\Requests\Category\StoreCategoryRequest;
+use App\Http\Requests\Category\UpdateCategoryRequest;
+use App\Http\Resources\Category\CategoryIndexResource;
+use App\Http\Resources\Category\CategoryUpdateResource;
+use App\Http\Resources\CategoryResource;
+use App\Http\Resources\MessageResource;
 use App\Models\Category;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
+use App\Services\CategoryService;
+use Dedoc\Scramble\Attributes\Group;
 
+#[Group('Categories')]
 class CategoryController extends Controller
 {
-    public function index(Request $request)
+    public function __construct(
+        protected CategoryService $categoryService
+    ) {}
+
+    public function index(IndexCategoryRequest $request): CategoryIndexResource
     {
-        // Legacy issue: returns all records, no cache, no pagination.
-        $categories = Category::orderBy('created_at', 'desc')->get();
-        return response()->json(['categories' => $categories]);
+        $perPage = $request->validated('per_page') ?? 50;
+
+        return new CategoryIndexResource(
+            $this->categoryService->paginate($perPage)
+        );
     }
 
-    public function store(Request $request)
+    public function store(StoreCategoryRequest $request)
     {
-        if (!$request->name) {
-            return response()->json(['error' => 'name required'], 422);
-        }
+        $category = $this->categoryService->create($request->validated());
 
-        $category = Category::create($request->all());
-        Log::info('Category created', ['category_id' => $category->id]);
-
-        return response()->json($category, 201);
+        return (new CategoryResource($category))
+            ->response()
+            ->setStatusCode(201);
     }
 
-    public function show($id)
+    public function show(Category $category): CategoryResource
     {
-        return response()->json(Category::find($id));
+        return new CategoryResource($this->categoryService->findOrFail($category->id));
     }
 
-    public function update(Request $request, $id)
+    public function update(UpdateCategoryRequest $request, Category $category): CategoryUpdateResource
     {
-        $category = Category::find($id);
+        $category = $this->categoryService->update($category, $request->validated());
 
-        if (!$category) {
-            return response()->json(['message' => 'No category'], 404);
-        }
-
-        $category->fill($request->all());
-        $category->save();
-
-        Log::info('Category updated', ['category_id' => $category->id]);
-
-        return response()->json(['updated' => true, 'category' => $category]);
+        return new CategoryUpdateResource($category);
     }
 
-    public function destroy($id)
+    public function destroy(Category $category): MessageResource
     {
-        $category = Category::find($id);
-        if (!$category) {
-            return response()->json(['error' => 'not found'], 404);
-        }
+        $this->categoryService->delete($category);
 
-        $category->delete();
-        Log::info('Category deleted', ['category_id' => $id]);
-
-        return response()->json(['ok' => true]);
+        return new MessageResource(['ok' => true]);
     }
 }

@@ -2,145 +2,83 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\Product\IndexProductRequest;
+use App\Http\Requests\Product\IndexStockMovementRequest;
+use App\Http\Requests\Product\StoreProductRequest;
+use App\Http\Requests\Product\StoreStockMovementRequest;
+use App\Http\Requests\Product\UpdateProductRequest;
+use App\Http\Resources\MessageResource;
+use App\Http\Resources\Product\ProductUpdateResource;
+use App\Http\Resources\Product\StockMovementStoreResource;
+use App\Http\Resources\ProductResource;
+use App\Http\Resources\StockMovementResource;
 use App\Models\Product;
-use App\Models\StockMovement;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
+use App\Services\ProductService;
+use App\Services\StockMovementService;
+use Dedoc\Scramble\Attributes\Group;
 
+#[Group('Products')]
 class ProductController extends Controller
 {
-    public function index(Request $request)
+    public function __construct(
+        protected ProductService $productService,
+        protected StockMovementService $stockMovementService
+    ) {}
+
+    public function index(IndexProductRequest $request)
     {
-        // Legacy issue: no pagination, raw SQL, string concatenation and N+1 category loading.
-        $sql = "SELECT * FROM products WHERE 1=1";
-
-        if ($request->get('q')) {
-            $sql .= " AND name LIKE '%" . $request->get('q') . "%'";
-        }
-
-        if ($request->get('category_id')) {
-            $sql .= " AND category_id = " . $request->get('category_id');
-        }
-
-        if ($request->get('status') !== null) {
-            $sql .= " AND status = " . $request->get('status');
-        }
-
-        $sql .= " ORDER BY created_at DESC";
-
-        $products = DB::select($sql);
-
-        foreach ($products as $product) {
-            $product->category = DB::table('categories')->where('id', $product->category_id)->first();
-            $product->total_movements = DB::table('stock_movements')->where('product_id', $product->id)->count();
-        }
-
-        return response()->json($products);
+        return ProductResource::collection(
+            $this->productService->paginate($request->validated())
+        );
     }
 
-    public function store(Request $request)
+    public function store(StoreProductRequest $request)
     {
-        // Legacy issue: validation is incomplete and mixed with persistence logic.
-        if (!$request->name) {
-            return response()->json(['message' => 'Name is required'], 422);
-        }
+        $product = $this->productService->create($request->validated());
 
-        $product = new Product();
-        $product->name = $request->name;
-        $product->description = $request->description;
-        $product->price = $request->price;
-        $product->stock = $request->stock;
-        $product->category_id = $request->category_id;
-        $product->status = $request->status ?? 1;
-        $product->save();
-
-        Log::info('Product created', ['product_id' => $product->id, 'payload' => $request->all()]);
-
-        return response()->json(['ok' => true, 'product' => $product], 201);
+        return (new ProductResource($product->load('category')))
+            ->response()
+            ->setStatusCode(201);
     }
 
-    public function show($id)
+    public function show(Product $product): ProductResource
     {
-        $product = Product::find($id);
-
-        if (!$product) {
-            return response()->json(['error' => 'Product not found'], 404);
-        }
-
-        $product->category_name = DB::table('categories')->where('id', $product->category_id)->value('name');
-        return response()->json(['data' => $product]);
+        return new ProductResource($this->productService->findOrFail($product->id));
     }
 
-    public function update(Request $request, $id)
+    public function update(UpdateProductRequest $request, Product $product): ProductUpdateResource
     {
-        $product = Product::find($id);
+        $product = $this->productService->update($product, $request->validated());
 
-        if (!$product) {
-            return response()->json(['msg' => 'No existe'], 404);
-        }
-
-        // Legacy issue: mass assignment without specific validation or normalization.
-        $product->fill($request->all());
-        $product->save();
-
-        Log::info('Product updated', ['product_id' => $product->id, 'payload' => $request->all()]);
-
-        return response()->json(['success' => true, 'data' => $product]);
+        return new ProductUpdateResource($product);
     }
 
-    public function destroy($id)
+    public function destroy(Product $product): MessageResource
     {
-        $product = Product::find($id);
+        $this->productService->delete($product);
 
-        if (!$product) {
-            return response()->json(['success' => false, 'message' => 'Product not found'], 404);
-        }
-
-        $product->delete();
-        Log::info('Product deleted', ['product_id' => $id]);
-
-        return response()->json(['deleted' => true]);
+        return new MessageResource(['deleted' => true]);
     }
 
-    public function stockMovements($id)
+    public function stockMovements(IndexStockMovementRequest $request, Product $product)
     {
-        // Legacy issue: no pagination and no product validation.
-        $movements = StockMovement::where('product_id', $id)->orderBy('id', 'desc')->get();
-        return response()->json($movements);
+        $perPage = $request->validated('per_page') ?? 20;
+
+        return StockMovementResource::collection(
+            $this->stockMovementService->paginateForProduct($product, $perPage)
+        );
     }
 
-    public function storeStockMovement(Request $request, $id)
-    {
-        // Legacy issue: no transaction, weak validation and race-condition risk.
-        $product = Product::find($id);
+    public function storeStockMovement(
+        StoreStockMovementRequest $request,
+        Product $product
+    ): StockMovementStoreResource {
+        $result = $this->stockMovementService->register(
+            $product,
+            $request->validated(),
+            $request->user()
+        );
 
-        if (!$product) {
-            return response()->json(['message' => 'Product not found'], 404);
-        }
-
-        if ($request->type == 'salida') {
-            $product->stock = $product->stock - $request->quantity;
-        } else {
-            $product->stock = $product->stock + $request->quantity;
-        }
-
-        $product->save();
-
-        $movement = StockMovement::create([
-            'product_id' => $product->id,
-            'type' => $request->type,
-            'quantity' => $request->quantity,
-            'reason' => $request->reason,
-            'user_id' => $request->auth_user_id,
-        ]);
-
-        Log::info('Stock movement registered', ['movement_id' => $movement->id]);
-
-        return response()->json([
-            'message' => 'Stock updated',
-            'product' => $product,
-            'movement' => $movement,
-        ]);
+        return new StockMovementStoreResource($result);
     }
 }

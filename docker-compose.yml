@@ -1,25 +1,12 @@
-services:
-  api:
-    build: .
-    container_name: legacy_api
-    ports:
-      - "8000:8000"
-    env_file:
-      - .env.docker
-    environment:
-      DB_HOST: mysql
-    volumes:
-      - .:/var/www/html
-      - legacy_vendor:/var/www/html/vendor
-    depends_on:
-      mysql:
-        condition: service_healthy
-    networks:
-      - legacy_shared
+# Step 1 — run from this folder:
+#   docker compose up -d --build
+#
+# Services: mysql (data), redis (cache + queues), api, queue (worker)
+# Then start the frontend (step 2) in ../frontend-legacy-vue2
 
+services:
   mysql:
     image: mysql:8.0
-    container_name: legacy_mysql
     environment:
       MYSQL_DATABASE: legacy_products
       MYSQL_ROOT_PASSWORD: root
@@ -36,9 +23,59 @@ services:
     networks:
       - legacy_shared
 
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - legacy_shared
+
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env.docker
+    environment:
+      DB_HOST: mysql
+      REDIS_HOST: redis
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 120s
+    networks:
+      legacy_shared:
+        aliases:
+          - api
+
+  queue:
+    build: .
+    env_file:
+      - .env.docker
+    environment:
+      DB_HOST: mysql
+      REDIS_HOST: redis
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["php", "artisan", "queue:work", "redis", "--sleep=1", "--tries=3", "--max-time=3600"]
+    networks:
+      - legacy_shared
+
 volumes:
   legacy_mysql_data:
-  legacy_vendor:
 
 networks:
   legacy_shared:

@@ -1,16 +1,47 @@
-# Dockerización — problemas encontrados y soluciones
+# Docker — backend (MySQL + API)
 
-Documentación de las decisiones tomadas al dockerizar el backend (**Laravel 11**, PHP 8.3 en Docker) y el frontend (**Vue 3 + Vite + Pinia**) con **archivos Compose separados** y comunicación por **nombres de servicio** en la red Docker.
+Documentación para el evaluador y detalle técnico del stack backend.
 
-Migración de framework: **[UPGRADE.md](./UPGRADE.md)**.
+**Instrucciones rápidas:** [README.md](./README.md) · proyecto completo: [../README.md](../README.md)
+
+Migración Laravel: **[UPGRADE.md](./UPGRADE.md)**.
+
+---
+
+## Arranque (evaluador)
+
+```bash
+cd backend-legacy-laravel8
+docker compose up -d --build
+docker compose logs -f api
+```
+
+| Servicio Compose | Rol | Puerto host |
+|------------------|-----|-------------|
+| `mysql` | MySQL 8.0 — **base de datos principal** | **3307** → 3306 |
+| `redis` | Caché + colas (no sustituye MySQL) | solo red Docker |
+| `api` | Laravel 11 (`artisan serve`) | **8000** |
+| `queue` | `php artisan queue:work redis` | — |
+
+Red Docker: `legacy_shared` (nombre fijo). Alias DNS **`api`** para el frontend.
+
+**Verificación:**
+
+```bash
+docker compose ps
+curl -s http://localhost:8000/api/health
+```
+
+MySQL desde DBeaver/CLI en el host: `127.0.0.1:3307`, `root` / `root`.
 
 ---
 
 ## Objetivo
 
-- Un `docker-compose.yml` por repositorio (backend y frontend independientes).
-- Los contenedores se descubren por DNS interno (`api`, `mysql`, `frontend`), no por IP fija.
-- El stack sigue siendo usable desde el navegador en `localhost`.
+- Un `docker-compose.yml` **por repositorio** (este archivo = paso 1; frontend = paso 2).
+- Arranque: `docker compose up -d --build` en `backend-legacy-laravel8`, luego en `frontend-legacy-vue2`.
+- DNS interno (`api`, `mysql`) en la red `legacy_shared`; sin IP fija.
+- Sin `composer install` ni `.env` manual en cada máquina (`.env.docker` + entrypoint).
 
 ---
 
@@ -55,7 +86,7 @@ Migración de framework: **[UPGRADE.md](./UPGRADE.md)**.
 Cambios:
 
 - `vite.config.js`: `server.proxy` para `/api`, `host: '0.0.0.0'`, `loadEnv` para leer `VITE_PROXY_TARGET`.
-- `src/api.js`: `baseURL` por defecto `/api` en lugar de `http://127.0.0.1:8000/api`.
+- `src/api/client.js`: `baseURL` por defecto `/api` en lugar de `http://127.0.0.1:8000/api`.
 - `frontend/docker-compose.yml`: `VITE_PROXY_TARGET=http://api:8000`.
 
 En desarrollo local sin Docker, el proxy apunta por defecto a `http://127.0.0.1:8000`.
@@ -93,9 +124,9 @@ Los servicios se referencian por nombre DNS de Compose: `api`, `mysql`, `fronten
 
 **Solución:**
 
-- `docker/entrypoint.sh` crea la estructura de `storage` y `bootstrap/cache` al arrancar.
-- Si falta `vendor`, ejecuta `composer install`.
-- Volumen nombrado `legacy_vendor` montado en `/var/www/html/vendor` para que el bind mount del código fuente no borre las dependencias instaladas en la imagen.
+- **Multi-stage Dockerfile:** stage Composer instala dependencias; la imagen final copia `vendor/` (sin bind mount del código en Compose).
+- `docker/entrypoint.sh` crea `storage/` y `bootstrap/cache/` al arrancar.
+- Si falta `vendor` (p. ej. desarrollo con montajes), ejecuta `composer install --no-dev`.
 
 ---
 
@@ -119,18 +150,11 @@ Los servicios se referencian por nombre DNS de Compose: `api`, `mysql`, `fronten
 
 ---
 
-### 9. Bind mounts vs dependencias (`vendor`, `node_modules`)
+### 9. Dependencias en la imagen (sin bind mount de código)
 
-**Problema:** Montar el código del host sobre `/var/www/html` o `/app` **oculta** `vendor/` y `node_modules/` generados en la imagen.
+**Problema:** Montar el código del host sobre `/var/www/html` ocultaría `vendor/` generado en build.
 
-**Solución:**
-
-| Proyecto | Volumen nombrado | Montaje |
-|----------|------------------|---------|
-| Backend | `legacy_vendor` | `/var/www/html/vendor` |
-| Frontend | `legacy_frontend_node_modules` | `/app/node_modules` |
-
-El código sigue sincronizado con el host; las dependencias persisten en volúmenes Docker.
+**Solución actual:** El `docker-compose.yml` del backend **no** monta el código del host; `vendor` va en la imagen. Volumen nombrado solo para datos: `legacy_mysql_data` (MySQL). El frontend empaqueta `node_modules` en su imagen (`npm ci` en build).
 
 ---
 
@@ -152,8 +176,8 @@ El código sigue sincronizado con el host; las dependencias persisten en volúme
 
 | Archivo | Rol |
 |---------|-----|
-| `Dockerfile` | Imagen PHP 8.0, Composer, extensiones Laravel. |
-| `docker-compose.yml` | Servicios `api` + `mysql`, red `legacy_shared`, volúmenes. |
+| `Dockerfile` | PHP 8.3-cli, Composer multi-stage, `vendor` en imagen. |
+| `docker-compose.yml` | Servicios `api` + `mysql`, red `legacy_shared`, volumen MySQL. |
 | `docker/entrypoint.sh` | Storage, Composer, espera MySQL, migrate/seed condicional. |
 | `.env.docker` | Variables para contenedor (`DB_HOST=mysql`, etc.). |
 | `.dockerignore` | Excluye `vendor`, `.env`, artefactos innecesarios del build. |
@@ -165,7 +189,7 @@ El código sigue sincronizado con el host; las dependencias persisten en volúme
 | `Dockerfile` | Node 18, `npm install`, `npm run dev`. |
 | `docker-compose.yml` | Servicio `frontend`, red externa `legacy_shared`. |
 | `vite.config.js` | Proxy `/api`, `0.0.0.0`, `loadEnv`. |
-| `src/api.js` | `baseURL` relativo `/api`. |
+| `src/api/client.js` | `baseURL` relativo `/api`. |
 | `.env.docker` / `.env.example` | Documentan proxy local vs Docker. |
 | `.dockerignore` | Excluye `node_modules`, `dist`. |
 

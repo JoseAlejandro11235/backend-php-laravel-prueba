@@ -2,11 +2,28 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use OwenIt\Auditing\Auditable as AuditableTrait;
+use OwenIt\Auditing\Contracts\Auditable;
 
-class Category extends Model
+class Category extends Model implements Auditable
 {
-    protected $fillable = ['name', 'description', 'status'];
+    use AuditableTrait;
+    use HasFactory;
+
+    protected $fillable = [
+        'name',
+        'description',
+        'status',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'status' => 'boolean',
+        ];
+    }
 
     public function products()
     {

@@ -63,7 +63,7 @@ composer:2-php8.2: not found
 
 - Nuevo `bootstrap/app.php` con `Application::configure()`:
   - `withRouting(api: ..., commands: ..., health: '/up')`
-  - `withMiddleware()` → alias `auth` → `LegacyTokenAuth`
+  - Rutas protegidas con `auth:sanctum` (fase 2; ver [API.md](./API.md))
 - Rate limiting movido a `AppServiceProvider::boot()` (`RateLimiter::for('api', ...)`).
 - Eliminados: `Http\Kernel`, `Console\Kernel`, `RouteServiceProvider`, `TrimStrings` (middleware por defecto del framework).
 
@@ -143,11 +143,11 @@ composer:2-php8.2: not found
 
 ---
 
-### 12. API sin cambios de contrato
+### 12. Rutas `/api` y prefijo
 
-**Problema:** El frontend Vue espera las mismas rutas y respuestas.
+**Problema:** El frontend Vue depende del prefijo `/api` y de rutas conocidas.
 
-**Solución:** `routes/api.php` sin cambios funcionales. Prefijo `/api` lo aplica `withRouting(api: ...)`. Middleware `auth` sigue siendo `LegacyTokenAuth`. Endpoints y payloads legacy intactos.
+**Solución:** Prefijo `/api` vía `withRouting(api: ...)` en `bootstrap/app.php`. Las rutas y verbos se mantienen; la **fase 2** (refactor) endureció validación, auth Sanctum y forma JSON (p. ej. paginación en productos). Ver [API.md](./API.md#migración-desde-legacy).
 
 ---
 
@@ -207,16 +207,18 @@ docker compose up -d --build
 
 ---
 
-## Qué no se migró (intencional)
+## Fase 2 — Refactor de API (posterior al upgrade)
 
-- Refactor de controladores, modelos o autenticación.
-- Sanctum / Passport.
-- Paginación, políticas, Form Requests.
-- Los “legacy issues” documentados en el README del proyecto.
+Tras el upgrade de framework se aplicó la evolución descrita en [API.md](./API.md):
+
+- Sanctum, Form Requests, Services, API Resources, auditoría, Scramble (OpenAPI), tests feature, índices/FK y caché de dashboard.
+- Plan completo, optimizaciones y decisiones técnicas: sección **Plan de migración y evolución** y **Decisiones técnicas** en [API.md](./API.md).
 
 ---
 
 ## Referencias
 
 - [Laravel 11.x Upgrade Guide](https://laravel.com/docs/11.x/upgrade)
+- [API.md](./API.md) — plan de evolución, decisiones técnicas y optimización
+- [OPENAPI.md](./OPENAPI.md) — documentación Swagger
 - [DOCKER.md](./DOCKER.md) — red Docker y proxy con el frontend
