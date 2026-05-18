@@ -7,10 +7,13 @@ use Throwable;
 
 class Handler extends ExceptionHandler
 {
-    protected $dontReport = [];
-    protected $dontFlash = ['current_password', 'password', 'password_confirmation'];
+    protected $dontFlash = [
+        'current_password',
+        'password',
+        'password_confirmation',
+    ];
 
-    public function register()
+    public function register(): void
     {
         // No custom exception handling in legacy version.
     }

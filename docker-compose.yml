@@ -1,5 +1,22 @@
-version: '3.8'
 services:
+  api:
+    build: .
+    container_name: legacy_api
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env.docker
+    environment:
+      DB_HOST: mysql
+    volumes:
+      - .:/var/www/html
+      - legacy_vendor:/var/www/html/vendor
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - legacy_shared
+
   mysql:
     image: mysql:8.0
     container_name: legacy_mysql
@@ -10,6 +27,20 @@ services:
       - "3307:3306"
     volumes:
       - legacy_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+    networks:
+      - legacy_shared
 
 volumes:
   legacy_mysql_data:
+  legacy_vendor:
+
+networks:
+  legacy_shared:
+    name: legacy_shared
+    driver: bridge
