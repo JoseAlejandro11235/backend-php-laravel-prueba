@@ -1,6 +1,6 @@
 # Dockerización — problemas encontrados y soluciones
 
-Documentación de las decisiones tomadas al dockerizar el backend (**Laravel 11**, PHP 8.3 en Docker) y el frontend (Vue 2 + Vite) con **archivos Compose separados** y comunicación por **nombres de servicio** en la red Docker.
+Documentación de las decisiones tomadas al dockerizar el backend (**Laravel 11**, PHP 8.3 en Docker) y el frontend (**Vue 3 + Vite + Pinia**) con **archivos Compose separados** y comunicación por **nombres de servicio** en la red Docker.
 
 Migración de framework: **[UPGRADE.md](./UPGRADE.md)**.
 

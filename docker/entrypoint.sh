@@ -6,6 +6,9 @@ cd /var/www/html
 mkdir -p storage/framework/sessions storage/framework/views storage/framework/cache storage/logs bootstrap/cache
 chmod -R 775 storage bootstrap/cache 2>/dev/null || true
 
+# Avoid stale package manifest from host (e.g. dev-only Collision provider).
+rm -f bootstrap/cache/packages.php bootstrap/cache/services.php bootstrap/cache/config.php 2>/dev/null || true
+
 if [ ! -f .env ]; then
   if [ -f .env.docker ]; then
     cp .env.docker .env
