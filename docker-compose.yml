@@ -1,0 +1,15 @@
+version: '3.8'
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: legacy_mysql
+    environment:
+      MYSQL_DATABASE: legacy_products
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "3307:3306"
+    volumes:
+      - legacy_mysql_data:/var/lib/mysql
+
+volumes:
+  legacy_mysql_data:
